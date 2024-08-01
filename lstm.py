@@ -1,117 +1,153 @@
-import json
-import requests
 import pandas as pd
 import numpy as np
 import math
-from binance.client import Client
 import matplotlib.pyplot as plt
-import matplotlib.dates as mdates
 from sklearn.preprocessing import MinMaxScaler
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import LSTM, Dense, Dropout
-from tensorflow.keras.callbacks import ModelCheckpoint, EarlyStopping
-from sklearn.metrics import mean_squared_error
 import pickle
+import math
 
-from sklearn.metrics import mean_squared_error
-from data import getData
 
-class LSTMP:
-    def __init__(self, symbol : str, data : pd.DataFrame, n_past : int):
-        self.data = data
-        self.symbol = symbol
-        self.scaler = MinMaxScaler()
-        self.model = Sequential()
-        self.xtrain, self.ytrain, self.xtest, self.ytest = [], [], [], []
-        self.trainTestData(0.8, n_past)
+class Model:
+    def __init__(self, data, symbol, day):
+        self.__day =day
+        self.__symbol = symbol
+        self.__data = data
+        self.__dataset = data.values
+        self.__scalerX =  MinMaxScaler(feature_range=(0, 1))
+        self.__scalerY = MinMaxScaler(feature_range=(0, 1))
+        self.__len = self.__dataset.shape[0]
+        self.__trainSize = math.ceil(len(self.__dataset) * .8)
+        self.__dataTrain = self.__dataset[0:self.__trainSize, :]
+        self.__dataTest = self.__dataset[self.__trainSize - day :, :]
+        self.__dataTrainX = []
+        self.__dataTrainY = []
+        self.__dataTestX = []
+        self.__dataTestY = []
+        self.__model = Sequential()
 
-    def scaleData(self, data):
-        return self.scaler.fit_transform(data.reshape(data.shape[0], -1))
+        for i in range(day, len(self.__dataTrain)):
+            self.__dataTrainX.append(self.__dataTrain[i - day : i])
+            self.__dataTrainY.append(self.__dataTrain[i, 3])
+
+        self.__dataTrainX = np.array(self.__dataTrainX).astype(float)
+        self.__dataTrainY = np.array(self.__dataTrainY).astype(float)
+
+        self.__dataTrainX = np.reshape(self.__dataTrainX, (-1, day, 5))
+        self.__dataTrainY = np.reshape(self.__dataTrainY, (-1, 1))
+
+        self.__dataTestY = self.__dataset[self.__trainSize : , 3]
+
+        for i in range(day, len(self.__dataTest)):
+            self.__dataTestX.append(self.__dataTest[i - day : i, :])
+
+        self.__dataTestX = np.array(self.__dataTestX).astype(float)
+        self.__dataTestY = np.array(self.__dataTestY).astype(float)
+
+        self.__dataTestX = np.reshape(self.__dataTestX, (-1, day, 5))
+        self.__dataTestY = np.reshape(self.__dataTestY, (-1, 1))
+
+        #scale
+        self.__scdataTrainX = np.reshape(self.__dataTrainX,(self.__dataTrainX.shape[0], -1))
+        self.__scdataTrainX = self.__scalerX.fit_transform(self.__scdataTrainX)
+        self.__scdataTrainX = np.reshape(self.__scdataTrainX, (self.__dataTrainX.shape[0], day, 5))
+
+        self.__scdataTestX = np.reshape(self.__dataTestX,(self.__dataTestX.shape[0], -1))
+        self.__scdataTestX = self.__scalerX.transform(self.__scdataTestX)
+        self.__scdataTestX = np.reshape(self.__scdataTestX, (self.__dataTestX.shape[0], day, 5))
+
+        self.__scdataTrainY = self.__scalerY.fit_transform(self.__dataTrainY)
+
+    @property
+    def data(self):
+        return self.__data
     
-    def trainTestData(self, ratio : float, n_past : int):
-        sd = np.array(self.data).astype(float).reshape(-1, 1)
-        sd = self.scaleData(sd)
-        train_size = int(len(sd) * ratio)
-        train_data, test_data = sd[:train_size], sd[train_size:]
-
-        X_train, Y_train, X_test, Y_test = [], [], [], []
-
-        for i in range(n_past, len(train_data)):
-            X_train.append(train_data[i - n_past:i, 0])
-            Y_train.append(train_data[i, 0])
-        
-        for i in range(n_past, len(test_data)):
-            X_test.append(test_data[i - n_past:i, 0])
-            Y_test.append(test_data[i, 0])
-
-        self.xtrain, self.ytrain, self.xtest, self.ytest =  np.array(X_train), np.array(Y_train), np.array(X_test), np.array(Y_test)
+    @property
+    def dataset(self):
+        return self.__dataset
     
-    def createModel(self):
-
-        self.model.add(LSTM(units=50, return_sequences=True, input_shape=(self.xtrain.shape[1], 1)))
-        self.model.add(Dropout(0.2))
-
-        self.model.add(LSTM(units=50, return_sequences=True))
-        self.model.add(Dropout(0.2))
-
-        self.model.add(LSTM(units=50))
-        self.model.add(Dropout(0.2))
-
-        self.model.add(Dense(units=1))
-
-        self.model.summary()
-
-        self.model.compile(loss="mean_squared_error", optimizer="adam")
-
-        self.model.fit(self.xtrain, self.ytrain, validation_data=(self.xtest, self.ytest), epochs = 100, batch_size=32, verbose=1)
+    @property
+    def datatrain(self):
+        return self.__dataTrain
     
-    def inverse(self, data):
-        return self.scaler.inverse_transform(data)
+    @property
+    def datatest(self):
+        return self.__dataTest
     
+    @property
+    def datatrainx(self):
+        return self.__dataTrainX
+    
+    @property
+    def datatrainy(self):
+        return self.__dataTrainY
+    
+    @property
+    def datatestx(self):
+        return self.__dataTestX
+    
+    @property
+    def datatesty(self):
+        return self.__dataTestY
+    
+    @property
+    def scalerx(self):
+        return self.__scalerX
+    
+    @property
+    def scalery(self):
+        return self.__scalerY
+
+    def build_model(self):
+        print(self.__dataTestX)
+        print(self.__dataTestY)
+        self.__model.add(LSTM(64, activation = "relu", return_sequences = True, input_shape=(self.__scdataTrainX.shape[1], self.__scdataTrainX.shape[2])))
+        self.__model.add(LSTM(32, activation = "relu", return_sequences = False))
+        self.__model.add(Dropout(0.2))
+        self.__model.add(Dense(self.__dataTrainY.shape[1]))
+        self.__model.compile(optimizer = "adam", loss="mse")
+        self.__model.fit(self.__scdataTrainX, self.__scdataTrainY, epochs = 100, batch_size = 16, verbose = 1)
+
     def predict(self, data):
-        return self.model.predict(data)
+        return self.__model.predict(data)
+    
+    def rmse(self):
+        return np.sqrt(np.mean(self.__scalerY.inverse_transform(self.predict(self.__scdataTestX)) - self.__dataTestY) ** 2)
+    
 
-    def saveModel(self, name):
-        with open(f'{name}.pkl', 'wb') as file:
+    def save_model(self, filename):
+        with open(f"{filename}.pickle", 'wb') as file:
             pickle.dump(self, file)
 
-    def predictAndDraw(self, nextDays):
-
-        x = self.xtest[-1].reshape(1, -1)
-        nextDaysList = []
-        for _ in range(nextDays):
-            nextDay = self.predict(x)
-            nextDaysList.append(nextDay[0, 0])
-            x = np.roll(x, -1, axis=1)
-            x[0, -1] = nextDay
-
-        nextDaysList = self.inverse(np.array(nextDaysList).reshape(-1, 1))
-        days = range(nextDays)
-        plt.plot(days, nextDaysList, color="red", label='Prediction')
-        plt.xlabel("Further days")
-        plt.ylabel("Predicted price")
-        plt.legend(loc='lower right')
+    def model_graph(self):
+        train = self.__data[:self.__trainSize]
+        valid = self.__data[self.__trainSize:]
+        valid['Pred'] = self.__scalerY.inverse_transform(self.predict(self.__scdataTestX))
+        plt.style.use("fivethirtyeight")
+        plt.figure(figsize=(16, 8))
+        plt.title("Model")
+        plt.xlabel("Date", fontsize = 15)
+        plt.ylabel("Close Price USD ($)", fontsize = 15)
+        plt.plot(train["Close"])
+        plt.plot(valid[['Close', 'Pred']])
+        plt.legend(['Train', 'Val', 'Predictions'], loc="lower right")
         plt.show()
 
-    def drawGraph(self):
-        length = len(self.ytest) + len(self.ytrain) 
-        x =  np.concatenate((self.xtrain, self.xtest), axis=0)
-        y = np.concatenate((self.ytrain, self.ytest), axis=0).reshape(-1, 1)
-        predict = self.predict(x)
-        plt.plot(np.array(range(length)).reshape(-1, 1), self.inverse(y), color='green', label='Real data')
-        plt.plot(np.array(range(length)).reshape(-1, 1), self.inverse(predict), color='red', label='Prediction')
-        plt.ylabel("Price")
-        plt.xlabel("Previous Days")
-        plt.legend(loc='lower right')
+    def graph(self):
+        plt.style.use("fivethirtyeight")
+        plt.figure(figsize=(16, 8))
+        plt.title("Model")
+        plt.xlabel("Date", fontsize = 15)
+        plt.ylabel("Close Price USD ($)", fontsize = 15)
+        plt.plot(self.__data["Close"])
         plt.show()
 
-    
-    def meanSquaredError(self):
-        test_predict = self.model.predict(self.xtest)
-        return math.sqrt(mean_squared_error(test_predict, self.ytest))
-    
-
-
+    def predict_nextday(self):
+        last_test = self.__scdataTestX[-1]
+        last_test = np.reshape(last_test, (1, self.__day, 5))
+        prediction = self.__scalerY.inverse_transform(self.predict(last_test))
+        return prediction
     
 
 
