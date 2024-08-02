@@ -1,6 +1,10 @@
 import pandas as pd
 import numpy as np
 import pickle
+from silence_tensorflow import silence_tensorflow
+silence_tensorflow()
+import warnings
+warnings.simplefilter('ignore')
 
 from datetime import datetime, timedelta
 from data import getData
