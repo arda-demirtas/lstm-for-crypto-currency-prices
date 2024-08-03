@@ -36,11 +36,11 @@ while True:
         data = np.array(getData(symbol, day=day))
         data = data[:, 0:6]
         df = pd.DataFrame(data=data, columns=['Date', 'Open', 'High', 'Low', 'Close', 'Volume'])
+        df = df.drop([df.shape[0] - 1])
         df.index = df['Date'].apply(to_datetime)
         df.index = df.index.astype('datetime64[ns]')
         df = df.drop(columns=['Date'])
-        df = df.astype(float)
-
+        df = df.astype(float)   
         model = Model(data=df, symbol=symbol, day=90)
         model.build_model()
         model.save_model(filename=fileName)
